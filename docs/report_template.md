@@ -2,7 +2,7 @@
 title: "How Certain Is a Counterfactual Crash Simulation?"
 subtitle: "Uncertainty quantification for reference-model benchmarking of automated driving systems"
 author: "Mohammad Albati, Ph.D."
-date: "Technical report v1.2 · October 2026 · Code: github.com/mohalbati/av-counterfactual-uq"
+date: "Technical report v1.2 · October 2026 · Code: github.com/mohalbati/av-counterfactual-uq · DOI: 10.5281/zenodo.23838254"
 ---
 
 # Abstract
@@ -819,7 +819,7 @@ These additions are inexpensive for any developer with a simulation pipeline. Th
 
 # 14. Code, data and reproducibility
 
-**Repository.** `av-counterfactual-uq` (planned public GitHub repository under github.com/mohalbati; MIT license). Its structure:
+**Repository.** `av-counterfactual-uq`, public on GitHub at github.com/mohalbati/av-counterfactual-uq (MIT license) and archived on Zenodo with DOI 10.5281/zenodo.23838254. Its structure:
 
 | Path | Content |
 |---|---|
