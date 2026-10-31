@@ -4,10 +4,15 @@ title: "How Certain Is a Counterfactual Crash Simulation? Uncertainty quantifica
 version: "1.2"
 date-released: "2026-10-31"
 license: MIT
+doi: "10.5281/zenodo.23838254"
 repository-code: "https://github.com/mohalbati/av-counterfactual-uq"
 authors:
   - family-names: Albati
     given-names: Mohammad
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.23838254"
+    description: "Zenodo archive (all versions)"
 keywords:
   - automated driving systems
   - counterfactual simulation

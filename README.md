@@ -1,5 +1,7 @@
 # How certain is a counterfactual crash simulation?
 
+[![DOI](https://zenodo.org/badge/1440901346.svg)](https://doi.org/10.5281/zenodo.23838254)
+
 Uncertainty quantification for reference-model benchmarking of automated driving systems (ADS), with an interactive browser simulator, an animated video and a CARLA 3D demonstration.
 
 Waymo evaluates its driver by simulating it, and a human reference model called **NIEON** (Non-Impaired, Eyes ON the conflict), in reconstructed real crashes. Each crash is simulated once, from one deterministic reconstruction and a point-estimate response time, and Waymo's papers have listed uncertainty modeling as future work since 2021. This repository implements that step. It uses Waymo's own published response-time model and injury threshold, with the uncertainty methods of nuclear probabilistic risk assessment (PRA).
@@ -91,7 +93,9 @@ This is the first piece of a larger project: an open, integrated PRA-style risk 
 
 ## Citation
 
-See [`CITATION.cff`](CITATION.cff). Use GitHub's "Cite this repository" button.
+Albati, M. (2026). *How Certain Is a Counterfactual Crash Simulation? Uncertainty quantification for reference-model benchmarking of automated driving systems* (v1.2) [Software and technical report]. Zenodo. https://doi.org/10.5281/zenodo.23838254
+
+See also [`CITATION.cff`](CITATION.cff) and GitHub's "Cite this repository" button.
 
 ## Author
 
