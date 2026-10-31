@@ -1,0 +1,5 @@
+variant,nieon_p05,nieon_p50,nieon_p95,ads_p05,ads_p50,ads_p95,p_nieon_equals_deterministic
+reconstruction only,3,5,7,14,15,16,0.32525
+"reconstruction only, half-width ranges",3,4,6,14,15,16,0.335
+NIEON/ADS model only,0,4,12,13,16,16,0.262
+both,0,5,12,13,15,16,0.09325

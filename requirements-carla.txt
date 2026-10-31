@@ -1,0 +1,5 @@
+# CARLA 3D demo (scripts/carla_demo.py). Python 3.7-3.10 on Windows; CARLA 0.9.15 server required.
+carla==0.9.15
+numpy
+pillow
+imageio[ffmpeg]

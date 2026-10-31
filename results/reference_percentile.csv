@@ -1,0 +1,4 @@
+response_time_percentile,nieon_avoided_of_16,ads_avoided_of_16
+10,14,16
+50,5,16
+90,0,16

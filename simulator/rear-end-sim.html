@@ -1,0 +1,330 @@
+<title>Rear-End Conflict Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: test-track console. Road view on top, live gauges under it, controls in a side rail (stacks on phones). */
+:root{
+  --bg:#EEF0F2; --panel:#FFFFFF; --ink:#16202C; --muted:#5A6573; --line:#D5DAE0;
+  --ref:#1F64C4; --ads:#C9541E; --lead:#6B7480; --bad:#B3261E; --good:#1E7A4C; --chip:#E6EAEF;
+  --asphalt:#2A2F37; --display:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  --body:'Barlow',Arial,sans-serif; --mono:'IBM Plex Mono','Courier New',monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12161C; --panel:#1B2129; --ink:#E7EBF0; --muted:#9AA5B3; --line:#2E3742;
+  --ref:#6FA8F2; --ads:#F08A55; --lead:#A3ACB8; --bad:#F2827A; --good:#6CCB98; --chip:#26303B; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161C; --panel:#1B2129; --ink:#E7EBF0; --muted:#9AA5B3; --line:#2E3742;
+  --ref:#6FA8F2; --ads:#F08A55; --lead:#A3ACB8; --bad:#F2827A; --good:#6CCB98; --chip:#26303B; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between}
+h1{font-family:var(--display);font-weight:700;font-size:34px;line-height:1;margin:0;letter-spacing:.3px;text-wrap:balance}
+.sub{color:var(--muted);margin:6px 0 0;max-width:70ch}
+.preset{display:flex;flex-direction:column;gap:4px;min-width:0}
+label,.lab{font-size:12px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);font-weight:600}
+select,button{font:inherit;color:var(--ink)}
+select{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 10px;max-width:100%}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:980px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.main{display:flex;flex-direction:column;gap:16px;min-width:0}
+#road{width:100%;display:block;border-radius:8px;background:#2A2F37}
+.transport{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+.btn{background:var(--ink);color:var(--panel);border:0;border-radius:6px;padding:8px 14px;font-weight:600;cursor:pointer}
+.btn.ghost{background:var(--chip);color:var(--ink)}
+.btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ref);outline-offset:2px}
+#scrub{flex:1;min-width:140px}
+.clock{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums;min-width:86px}
+.lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.lane{border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.lane h3{margin:0;font-family:var(--display);font-size:20px;font-weight:600;display:flex;align-items:center;gap:8px}
+.dot{width:12px;height:12px;border-radius:3px;display:inline-block}
+.gauges{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.g{display:flex;flex-direction:column}
+.g b{font-family:var(--mono);font-size:20px;font-weight:500;font-variant-numeric:tabular-nums}
+.g span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.status{font-weight:600;padding:4px 10px;border-radius:99px;background:var(--chip);align-self:flex-start;font-size:14px}
+.status.bad{background:var(--bad);color:var(--panel)} .status.good{background:var(--good);color:var(--panel)}
+.verdict{font-size:14px;color:var(--muted)}
+.verdict strong{color:var(--ink)}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.charts canvas{width:100%;height:210px;display:block}
+.side{display:flex;flex-direction:column;gap:16px;min-width:0}
+fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+legend{font-family:var(--display);font-size:20px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.ctl{display:flex;flex-direction:column;gap:2px}
+.ctl .row{display:flex;justify-content:space-between;gap:8px}
+.ctl output{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--ref)}
+.hint{font-size:13px;color:var(--muted);margin:0}
+.src{font-size:12px;color:var(--muted)}
+.mc{display:flex;flex-direction:column;gap:10px}
+.mcres{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.big{font-family:var(--display);font-size:34px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+#hist{width:100%;height:120px;display:block}
+.check{display:flex;gap:8px;align-items:center;font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink);font-weight:500}
+details summary{cursor:pointer;font-weight:600;font-size:14px}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+
+<div class="wrap">
+<header>
+  <div>
+    <h1>Rear-End Conflict Simulator</h1>
+    <p class="sub">A lead car brakes suddenly. Watch a NIEON-type reference driver and a generic ADS respond, using the models of the technical report (Eqs. 1–18). Change any number and the run is re-simulated.</p>
+  </div>
+  <div class="preset">
+    <label for="preset">Scenario</label>
+    <select id="preset"></select>
+  </div>
+</header>
+
+<div class="grid">
+<div class="main">
+  <div class="panel">
+    <canvas id="road" height="300" aria-label="Top-down road view of the lead car and the following cars"></canvas>
+    <div class="transport">
+      <button class="btn" id="play">Pause</button>
+      <button class="btn ghost" id="restart">Restart</button>
+      <select id="rate" aria-label="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1× real time</option><option value="2">2×</option></select>
+      <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Time">
+      <span class="clock" id="clock">t = 0.00 s</span>
+    </div>
+  </div>
+
+  <div class="lanes">
+    <div class="lane" id="laneRef">
+      <h3><span class="dot" style="background:var(--ref)"></span>Reference driver</h3>
+      <span class="status" id="stRef">Cruising</span>
+      <div class="gauges">
+        <div class="g"><b id="vRef">0</b><span>km/h</span></div>
+        <div class="g"><b id="gRef">0</b><span>gap m</span></div>
+        <div class="g"><b id="aRef">0</b><span>decel m/s²</span></div>
+        <div class="g"><b id="vLead">0</b><span>lead km/h</span></div>
+      </div>
+      <div class="verdict" id="vdRef"></div>
+    </div>
+    <div class="lane" id="laneAds">
+      <h3><span class="dot" style="background:var(--ads)"></span>Generic ADS</h3>
+      <span class="status" id="stAds">Cruising</span>
+      <div class="gauges">
+        <div class="g"><b id="vAds">0</b><span>km/h</span></div>
+        <div class="g"><b id="gAds">0</b><span>gap m</span></div>
+        <div class="g"><b id="aAds">0</b><span>decel m/s²</span></div>
+        <div class="g"><b id="vLead2">0</b><span>lead km/h</span></div>
+      </div>
+      <div class="verdict" id="vdAds"></div>
+    </div>
+  </div>
+
+  <div class="panel charts">
+    <div><div class="lab">Gap between bumpers (m)</div><canvas id="cGap" aria-label="Gap over time"></canvas></div>
+    <div><div class="lab">Speed (km/h)</div><canvas id="cSpd" aria-label="Speed over time"></canvas></div>
+  </div>
+
+  <div class="panel mc">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center">
+      <div><div class="lab">Uncertainty check</div><div style="font-family:var(--display);font-size:22px;font-weight:600">How sure is the single replay?</div></div>
+      <button class="btn" id="runMC">Run 10,000 uncertain replays</button>
+    </div>
+    <p class="hint">Samples 200 plausible versions of the crash and the models (outer loop), each with 50 different good drivers (inner loop), centred on the numbers you set. Half-widths as in the report: speed ±10%, headway ±25%, lead braking ±20%, lead jerk 5–20 m/s³, intercept SE 0.10 s, slope SE 0.122, CV ±0.15, braking ±1 m/s² and ±10 m/s³, ADS latency ±0.25 s.</p>
+    <div class="mcres">
+      <div><div class="lab">Reference P(collision)</div><div class="big" id="mcRef" style="color:var(--ref)">–</div><div class="src" id="mcRefCI">5th–95th: –</div></div>
+      <div><div class="lab">Flip probability</div><div class="big" id="mcFlip">–</div><div class="src">chance the outcome is opposite the mean-driver verdict</div></div>
+      <div><div class="lab">ADS P(collision)</div><div class="big" id="mcAds" style="color:var(--ads)">–</div><div class="src">over the same 200 versions</div></div>
+    </div>
+    <div><div class="lab">Spread of the reference's P(collision) across states of knowledge</div><canvas id="hist" aria-label="Histogram of collision probabilities"></canvas></div>
+  </div>
+</div>
+
+<aside class="side">
+  <div class="panel"><fieldset id="fsScen"><legend><span class="dot" style="background:var(--lead)"></span>Crash reconstruction</legend></fieldset></div>
+  <div class="panel"><fieldset id="fsRef"><legend><span class="dot" style="background:var(--ref)"></span>Reference driver</legend>
+    <div class="ctl"><label for="mode">Response time</label>
+      <select id="mode"><option value="mean">Mean driver (current practice)</option><option value="pct">Percentile driver</option><option value="manual">Manual response time</option></select></div>
+  </fieldset></div>
+  <div class="panel"><fieldset id="fsAds"><legend><span class="dot" style="background:var(--ads)"></span>Generic ADS</legend>
+    <label class="check"><input type="checkbox" id="showAds" checked> Show ADS lane</label></fieldset></div>
+  <div class="panel"><fieldset id="fsInj"><legend>Injury curve</legend></fieldset>
+    <p class="src" style="margin-top:8px">Model: Engström et al. (2024) timing; TARGET anchor 10% MAIS3+ at 126 km/h (Campolettano et al., 2025); kinematics Δt = 5 ms. Collision avoidance by braking only. Motion after impact is not modelled; the cars are drawn locked together.</p></div>
+</aside>
+</div>
+</div>
+
+<script>
+(()=>{
+const DT=0.005,TMAX=12,W=1.8,DEYE=2.0,LOOM=0.05,CARL=4.6;
+const SC=[["S01",43.2,0.49,6.13],["S02",96.48,0.92,6.55],["S03",57.96,0.45,8.84],["S04",110.16,1.20,8.02],["S05",45.72,1.46,8.37],["S06",72.0,1.40,7.17],["S07",51.84,1.34,6.87],["S08",55.8,0.73,9.50],["S09",91.44,1.16,7.70],["S10",64.08,0.83,7.93],["S11",106.2,0.64,9.05],["S12",68.4,1.00,8.51],["S13",100.08,0.59,6.27],["S14",78.84,1.54,7.42],["S15",83.52,0.32,5.94],["S16",86.76,1.07,5.70]];
+const CTL={
+ fsScen:[["v0","Initial speed of both cars","km/h",20,140,0.01,96.48],["h","Time headway (gap ÷ speed)","s",0.2,3,0.01,0.92],["aL","Lead car deceleration","m/s²",2,10,0.05,6.55],["jL","Lead brake build-up (jerk)","m/s³",2,30,0.5,12.5]],
+ fsRef:[["pct","Driver percentile (1 = fastest)","th",1,99,1,50],["rtMan","Manual response time","s",0.2,4,0.01,1.47],["cv","Driver spread, CV","",0.1,0.8,0.01,0.40],["m","RT intercept m","s",0.2,1.2,0.01,0.63],["k","RT slope k","s/s",0,1.2,0.01,0.47],["amax","Max deceleration","m/s²",3,10,0.1,7.5],["jerk","Brake build-up (jerk)","m/s³",5,40,1,20]],
+ fsAds:[["lat","Reaction latency","s",0.1,2,0.01,0.55],["aAds","Max deceleration","m/s²",3,10,0.1,8],["jAds","Brake build-up (jerk)","m/s³",5,50,1,30]],
+ fsInj:[["r50","Steepness R50","",1.2,2,0.05,1.55]]};
+const P={};const $=id=>document.getElementById(id);
+const fmt=(v,st,id)=>id==="v0"?v.toFixed(1):st>=1?v.toFixed(0):st>=0.1?v.toFixed(1):v.toFixed(2);
+for(const fs in CTL){for(const [id,lab,unit,mn,mx,st,dv] of CTL[fs]){
+  const d=document.createElement("div");d.className="ctl";d.id="w_"+id;
+  d.innerHTML=`<div class="row"><label for="${id}">${lab}</label><output id="o_${id}"></output></div><input type="range" id="${id}" min="${mn}" max="${mx}" step="${st}" value="${dv}">`;
+  $(fs).appendChild(d);P[id]=dv;
+  const inp=d.querySelector("input"),out=d.querySelector("output");
+  const show=()=>{out.textContent=fmt(+inp.value,st,id)+(unit?" "+unit:"")};show();
+  inp.addEventListener("input",()=>{P[id]=+inp.value;show();if(fs==="fsScen")syncPreset();schedule()});
+}}
+const pre=$("preset");pre.innerHTML=`<option value="custom">Custom (your numbers)</option>`+SC.map((s,i)=>`<option value="${i}">${s[0]} · ${s[1].toFixed(0)} km/h · ${s[2].toFixed(2)} s · ${s[3].toFixed(2)} m/s²</option>`).join("");
+pre.value="1";
+pre.addEventListener("change",()=>{if(pre.value==="custom")return;const s=SC[+pre.value];setv("v0",s[1]);setv("h",s[2]);setv("aL",s[3]);setv("jL",12.5);schedule()});
+function setv(id,v){const i=$(id);i.value=v;P[id]=+i.value;i.dispatchEvent(new Event("input"))}
+function syncPreset(){const i=SC.findIndex(s=>s[1]===P.v0&&Math.abs(s[2]-P.h)<1e-9&&Math.abs(s[3]-P.aL)<1e-9);pre.value=i>=0?String(i):"custom"}
+const mode=$("mode");function modeVis(){$("w_pct").hidden=mode.value!=="pct";$("w_rtMan").hidden=mode.value!=="manual";$("w_cv").hidden=mode.value!=="pct";}
+mode.addEventListener("change",()=>{modeVis();schedule()});modeVis();
+$("showAds").addEventListener("change",()=>{$("laneAds").hidden=!$("showAds").checked;sizeRoad();draw()});
+
+// ---------- model (mirrors src/cfuq) ----------
+const dec=(t,t0,j,a)=>Math.min(Math.max((t-t0)*j,0),a);
+function rampUp(v0,h,aL,jL){let x=h*v0,vL=v0,t=0;while(t<TMAX){const d=Math.max(x,0.01)+DEYE;if(W*(v0-vL)/(d*d+W*W/4)>=LOOM)return t;if(x<=0)return Infinity;const a=dec(t,0,jL,aL),vn=Math.max(vL-a*DT,0);x+=(0.5*(vL+vn)-v0)*DT;vL=vn;t+=DT}return Infinity}
+function invN(p){const a=[-39.69683028665376,220.9460984245205,-275.9285104469687,138.357751867269,-30.66479806614716,2.506628277459239],b=[-54.47609879822406,161.5858368580409,-155.6989798598866,66.80131188771972,-13.28068155288572],c=[-0.007784894002430293,-0.3223964580411365,-2.400758277161838,-2.549732539343734,4.374664141464968,2.938163982698783],d=[0.007784695709041462,0.3224671290700398,2.445134137142996,3.754408661907416];let q,r;if(p<0.02425){q=Math.sqrt(-2*Math.log(p));return(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)}if(p<=0.97575){q=p-0.5;r=q*q;return(((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1)}q=Math.sqrt(-2*Math.log(1-p));return-(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)}
+function rtModel(rut,m,k,cv,z){const mu=m+k*(isFinite(rut)?rut:10);if(z==null)return mu;const s=Math.sqrt(Math.log(1+cv*cv));return mu*Math.exp(s*z-0.5*s*s)}
+function injury(vc,r50){const dv=vc*3.6/2,d50=63*r50,b1=Math.log(9)/(d50-63);return 1/(1+Math.exp(-(b1*dv-b1*d50)))}
+function traj(v0,h,aL,jL,rt,amax,jerk){
+  let xL=h*v0,xS=0,vL=v0,vS=v0,t=0,contact=null,minGap=xL;const R={t:[],xL:[],xS:[],vL:[],vS:[],aS:[],aL:[]};
+  for(;;){const aLv=dec(t,0,jL,aL)*(vL>0?1:0);let aSv=contact?aLv:dec(t,rt,jerk,amax)*(vS>0?1:0);
+    R.t.push(t);R.xL.push(xL);R.xS.push(xS);R.vL.push(vL);R.vS.push(vS);R.aS.push(aSv);R.aL.push(aLv);
+    if((vS<=1e-9&&vL<=1e-9)||t>TMAX)break;
+    const vLn=Math.max(vL-dec(t,0,jL,aL)*DT,0);let vSn=contact?vLn:Math.max(vS-dec(t,rt,jerk,amax)*DT,0);
+    const xLn=xL+0.5*(vL+vLn)*DT;let xSn=xS+0.5*(vS+vSn)*DT;
+    if(!contact&&xLn-xSn<=0){const g0=xL-xS,g1=xLn-xSn,f=g0/Math.max(g0-g1,1e-12);contact={t:t+f*DT,vc:Math.max((vS+f*(vSn-vS))-(vL+f*(vLn-vL)),0)}}
+    if(contact){xSn=xLn;vSn=vLn}else minGap=Math.min(minGap,xLn-xSn);
+    xL=xLn;xS=xSn;vL=vLn;vS=vSn;t+=DT}
+  R.contact=contact;R.minGap=contact?0:Math.max(minGap,0);R.rt=rt;return R}
+function hits(v0,h,aL,jL,rt,amax,jerk){let x=h*v0,vL=v0,vS=v0,t=0;while(t<TMAX){const vLn=Math.max(vL-dec(t,0,jL,aL)*DT,0),vSn=Math.max(vS-dec(t,rt,jerk,amax)*DT,0);x+=(0.5*(vL+vLn)-0.5*(vS+vSn))*DT;if(x<=0)return true;if(vSn<=1e-9)return false;vL=vLn;vS=vSn;t+=DT}return false}
+
+// ---------- state ----------
+let S=null,tNow=0,playing=!matchMedia("(prefers-reduced-motion: reduce)").matches,last=null,timer=null;
+function compute(){
+  const v0=P.v0/3.6,rut=rampUp(v0,P.h,P.aL,P.jL);
+  let rt=mode.value==="manual"?P.rtMan:rtModel(rut,P.m,P.k,P.cv,mode.value==="pct"?invN(P.pct/100):null);
+  const rtMean=rtModel(rut,P.m,P.k,P.cv,null);
+  const ref=traj(v0,P.h,P.aL,P.jL,rt,P.amax,P.jerk),ads=traj(v0,P.h,P.aL,P.jL,P.lat,P.aAds,P.jAds);
+  const meanHit=hits(v0,P.h,P.aL,P.jL,rtMean,P.amax,P.jerk);
+  const dur=Math.max(ref.t[ref.t.length-1],ads.t[ads.t.length-1])+0.6;
+  S={v0,rut,rt,rtMean,ref,ads,dur,meanHit,view:Math.max(28,P.h*v0+CARL*2+8)};
+  verdicts();clearMC();
+}
+function schedule(){clearTimeout(timer);timer=setTimeout(()=>{compute();tNow=0;drawCharts();draw()},60)}
+const kmh=v=>(v*3.6);
+function verdicts(){
+  const f=(R,el,who)=>{const c=R.contact;
+    el.innerHTML=c?`<strong>Collision</strong> at ${c.t.toFixed(2)} s, closing speed <strong>${kmh(c.vc).toFixed(1)} km/h</strong> (Δv ${(kmh(c.vc)/2).toFixed(1)} km/h, P(MAIS3+) ${(100*injury(c.vc,P.r50)).toFixed(2)}%). Starts braking at ${R.rt.toFixed(2)} s.`
+      :`<strong>Avoided</strong>, stops <strong>${R.minGap.toFixed(1)} m</strong> short. Starts braking at ${R.rt.toFixed(2)} s.`};
+  f(S.ref,$("vdRef"));f(S.ads,$("vdAds"));
+  $("vdRef").innerHTML+=` <span class="src">Ramp-up time ${isFinite(S.rut)?S.rut.toFixed(2)+" s":"not reached"}; mean-driver RT ${S.rtMean.toFixed(2)} s.</span>`;
+}
+function idx(R,t){return Math.min(R.t.length-1,Math.max(0,Math.round(t/DT)))}
+function laneState(R,t,lat){const i=idx(R,t),c=R.contact;
+  if(c&&t>=c.t)return["bad",`Impact at ${kmh(c.vc).toFixed(0)} km/h`];
+  if(R.vS[i]<=1e-6&&i>0)return["good",`Stopped ${(R.xL[i]-R.xS[i]).toFixed(1)} m short`];
+  if(t<lat)return["",t<0.02?"Cruising":"Not braking yet"];
+  return["",`Braking ${R.aS[i].toFixed(1)} m/s²`]}
+
+// ---------- road drawing ----------
+const road=$("road"),rc=road.getContext("2d");let RW=800,RH=300;
+function sizeRoad(){const dpr=window.devicePixelRatio||1;RW=road.clientWidth;const lanes=$("showAds").checked?2:1;RH=lanes*120+50;road.style.height=RH+"px";road.width=RW*dpr;road.height=RH*dpr;rc.setTransform(dpr,0,0,dpr,0,0)}
+function car(x,y,len,wid,col,braking,label){
+  rc.save();rc.translate(x,y);rc.fillStyle="rgba(0,0,0,.35)";rr(-len+2,-wid/2+3,len,wid,5);rc.fill();
+  rc.fillStyle=col;rr(-len,-wid/2,len,wid,Math.min(6,wid/4));rc.fill();
+  rc.fillStyle="rgba(20,28,38,.75)";rr(-len*0.62,-wid/2+wid*0.14,len*0.22,wid*0.72,3);rc.fill();rr(-len*0.3,-wid/2+wid*0.16,len*0.14,wid*0.68,3);rc.fill();
+  rc.fillStyle=braking?"#FF3B30":"#7A1F1A";rc.shadowColor="#FF3B30";rc.shadowBlur=braking?14:0;
+  rc.fillRect(-len,-wid/2+2,Math.max(2,len*0.04),wid*0.22);rc.fillRect(-len,wid/2-2-wid*0.22,Math.max(2,len*0.04),wid*0.22);rc.shadowBlur=0;
+  rc.fillStyle="#FFF6C8";rc.fillRect(-2,-wid/2+3,2,wid*0.18);rc.fillRect(-2,wid/2-3-wid*0.18,2,wid*0.18);
+  if(label){rc.fillStyle="#E8ECF1";rc.font="600 13px Barlow, Arial";rc.textAlign="center";rc.fillText(label,-len/2,-wid/2-8)}
+  rc.restore()}
+function rr(x,y,w,h,r){rc.beginPath();rc.moveTo(x+r,y);rc.arcTo(x+w,y,x+w,y+h,r);rc.arcTo(x+w,y+h,x,y+h,r);rc.arcTo(x,y+h,x,y,r);rc.arcTo(x,y,x+w,y,r);rc.closePath()}
+function draw(){if(!S)return;const lanes=[["Reference driver",S.ref,S.rt,"#3B82E6"]];if($("showAds").checked)lanes.push(["Generic ADS",S.ads,P.lat,"#E8703A"]);
+  rc.fillStyle="#2A2F37";rc.fillRect(0,0,RW,RH);
+  const pxm=RW/S.view,iL=idx(S.ref,tNow),xLead=S.ref.xL[iL],camR=xLead+5;const X=m=>RW-(camR-m)*pxm;
+  rc.fillStyle="#C9CED6";rc.font="500 12px 'IBM Plex Mono', monospace";rc.textAlign="left";
+  rc.fillText(`t = ${tNow.toFixed(2)} s   lead ${kmh(S.ref.vL[iL]).toFixed(0)} km/h   ${tNow<0.02?"lead about to brake":"lead braking "+S.ref.aL[iL].toFixed(1)+" m/s²"}`,12,22);
+  lanes.forEach(([name,R,lat,col],k)=>{const y0=40+k*120,yc=y0+60,i=idx(R,tNow);
+    rc.fillStyle="#353B45";rc.fillRect(0,y0,RW,110);
+    rc.fillStyle="#E9E3C9";rc.fillRect(0,y0,RW,2);rc.fillRect(0,y0+108,RW,2);
+    rc.fillStyle="rgba(255,255,255,.55)";const per=12,off=((xLead%per)+per)%per;
+    for(let m=camR-S.view-per;m<camR+per;m+=per){const mm=m-((m-off)%per);rc.fillRect(X(mm),yc+40,3*pxm,2)}
+    for(let m=Math.ceil((camR-S.view)/10)*10;m<camR;m+=10){rc.fillStyle="rgba(255,255,255,.18)";rc.fillRect(X(m),y0+4,1,6)}
+    
+    const len=CARL*pxm,wid=Math.min(46,Math.max(18,1.85*pxm));
+    const xl=X(R.xL[i])+len,xs=X(R.xS[i]);
+    car(xl,yc,len,wid,"#D9DEE4",R.aL[i]>0.3,"");rc.fillStyle="#AEB6C1";rc.font="600 12px Barlow, Arial";rc.textAlign="center";rc.fillText("LEAD",xl-len/2,yc+wid/2+16);car(xs,yc,len,wid,col,R.aS[i]>0.3&&(!R.contact||tNow<R.contact.t),"");
+    const gap=R.xL[i]-R.xS[i];
+    if(gap>0.3){const ya=yc-wid/2-10;rc.strokeStyle="#F2D16B";rc.fillStyle="#F2D16B";rc.lineWidth=1.5;rc.beginPath();rc.moveTo(xs+2,ya);rc.lineTo(xl-len-2,ya);rc.stroke();
+      [xs+2,xl-len-2].forEach(x=>{rc.beginPath();rc.moveTo(x,ya-5);rc.lineTo(x,ya+5);rc.stroke()});
+      rc.font="500 13px 'IBM Plex Mono', monospace";rc.textAlign="center";const tx=(xs+xl-len)/2;rc.fillText(gap.toFixed(1)+" m",Math.min(Math.max(tx,40),RW-40),ya-6)}
+    const c=R.contact;if(c&&tNow>=c.t){const bx=xs,age=tNow-c.t;rc.save();rc.translate(bx,yc);rc.strokeStyle=`rgba(255,80,60,${Math.max(0.35,1-age)})`;rc.lineWidth=3;
+      for(let a=0;a<12;a++){const th=a*Math.PI/6,r1=8,r2=18+10*Math.min(age*4,1);rc.beginPath();rc.moveTo(r1*Math.cos(th),r1*Math.sin(th));rc.lineTo(r2*Math.cos(th),r2*Math.sin(th));rc.stroke()}rc.restore()}
+    const [cls,txt]=laneState(R,tNow,lat);rc.font="600 13px Barlow, Arial";rc.textAlign="left";
+    rc.fillStyle="#AEB6C1";rc.fillText(name.toUpperCase(),10,y0+18);const nw=rc.measureText(name.toUpperCase()+"   ").width;
+    rc.fillStyle=cls==="bad"?"#FF8A80":cls==="good"?"#7EE2A8":"#E8ECF1";rc.fillText(`${kmh(R.vS[i]).toFixed(0)} km/h · ${txt}`,10+nw,y0+18);
+  });
+  rc.fillStyle="rgba(255,255,255,.35)";rc.font="11px Barlow, Arial";rc.textAlign="left";rc.fillText("ticks every 10 m · view follows the lead car",10,RH-8);
+  gauges();cursor();
+  $("clock").textContent=`t = ${tNow.toFixed(2)} s`;$("scrub").value=Math.round(1000*tNow/S.dur);
+}
+function gauges(){const put=(R,lat,s,v,g,a,vl)=>{const i=idx(R,tNow);$(v).textContent=kmh(R.vS[i]).toFixed(0);$(g).textContent=Math.max(0,R.xL[i]-R.xS[i]).toFixed(1);$(a).textContent=R.aS[i].toFixed(1);$(vl).textContent=kmh(R.vL[i]).toFixed(0);const[c,t]=laneState(R,tNow,lat);const e=$(s);e.textContent=t;e.className="status "+c};
+  put(S.ref,S.rt,"stRef","vRef","gRef","aRef","vLead");put(S.ads,P.lat,"stAds","vAds","gAds","aAds","vLead2")}
+
+// ---------- charts ----------
+const cg=$("cGap"),cs=$("cSpd");let base={};
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function chart(cv,series,ymax,ylab,key){const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*dpr;cv.height=h*dpr;const c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);
+  const L=38,Rr=8,T=8,B=24,tm=S.dur;const X=t=>L+(w-L-Rr)*t/tm,Y=v=>T+(h-T-B)*(1-v/ymax);
+  c.clearRect(0,0,w,h);c.strokeStyle=css("--line");c.fillStyle=css("--muted");c.font="11px 'IBM Plex Mono', monospace";c.lineWidth=1;
+  const ys=nice(ymax);for(let v=0;v<=ymax+1e-9;v+=ys){c.beginPath();c.moveTo(L,Y(v));c.lineTo(w-Rr,Y(v));c.stroke();c.textAlign="right";c.fillText(v.toFixed(0),L-5,Y(v)+4)}
+  const xs=nice(tm);for(let t=0;t<=tm+1e-9;t+=xs){c.textAlign="center";c.fillText(t.toFixed(xs<1?1:0)+"s",X(t),h-6)}
+  for(const s of series){c.strokeStyle=s.col;c.lineWidth=s.w||2;c.setLineDash(s.dash||[]);c.beginPath();s.t.forEach((t,i)=>{const p=[X(t),Y(Math.max(0,s.y[i]))];i?c.lineTo(...p):c.moveTo(...p)});c.stroke();c.setLineDash([]);
+    if(s.rt!=null){c.fillStyle=s.col;c.beginPath();c.arc(X(s.rt),Y(s.y[Math.min(s.y.length-1,Math.round(s.rt/DT))]),4,0,7);c.fill()}
+    if(s.hit){c.strokeStyle=s.col;c.lineWidth=2.5;const x=X(s.hit),y=Y(0);c.beginPath();c.moveTo(x-6,y-6);c.lineTo(x+6,y+6);c.moveTo(x+6,y-6);c.lineTo(x-6,y+6);c.stroke()}}
+  base[key]={c,cv,X,T,h,B,img:c.getImageData(0,0,cv.width,cv.height)}}
+function nice(v){const r=v/5,p=Math.pow(10,Math.floor(Math.log10(r))),f=r/p;return(f<1.5?1:f<3.5?2:f<7.5?5:10)*p}
+function cut(R,arr){const n=R.contact?Math.min(arr.length,Math.ceil(R.contact.t/DT)+1):arr.length;return arr.slice(0,n)}
+function drawCharts(){if(!S)return;const ref=css("--ref"),ads=css("--ads"),lead=css("--lead"),showA=$("showAds").checked;
+  const gs=[{t:cut(S.ref,S.ref.t),y:cut(S.ref,S.ref.t.map((_,i)=>S.ref.xL[i]-S.ref.xS[i])),col:ref,rt:S.rt,hit:S.ref.contact&&S.ref.contact.t}];
+  if(showA)gs.push({t:cut(S.ads,S.ads.t),y:cut(S.ads,S.ads.t.map((_,i)=>S.ads.xL[i]-S.ads.xS[i])),col:ads,rt:P.lat,hit:S.ads.contact&&S.ads.contact.t});
+  chart(cg,gs,Math.max(5,P.h*S.v0*1.1),"m","g");
+  const ss=[{t:S.ref.t,y:S.ref.vL.map(kmh),col:lead,dash:[5,4],w:1.5},{t:cut(S.ref,S.ref.t),y:cut(S.ref,S.ref.vS.map(kmh)),col:ref,rt:S.rt}];
+  if(showA)ss.push({t:cut(S.ads,S.ads.t),y:cut(S.ads,S.ads.vS.map(kmh)),col:ads,rt:P.lat});
+  chart(cs,ss,P.v0*1.08,"km/h","s");cursor()}
+function cursor(){for(const k in base){const b=base[k];b.c.putImageData(b.img,0,0);const dpr=window.devicePixelRatio||1;b.c.setTransform(dpr,0,0,dpr,0,0);b.c.strokeStyle=css("--ink");b.c.lineWidth=1;b.c.globalAlpha=.6;b.c.beginPath();b.c.moveTo(b.X(Math.min(tNow,S.dur)),b.T);b.c.lineTo(b.X(Math.min(tNow,S.dur)),b.h-b.B);b.c.stroke();b.c.globalAlpha=1}}
+
+// ---------- transport ----------
+function frame(ts){if(playing&&S){if(last!=null){tNow+=(ts-last)/1000*(+$("rate").value);if(tNow>=S.dur){tNow=S.dur;playing=false;$("play").textContent="Play"}}last=ts;draw()}else last=null;requestAnimationFrame(frame)}
+$("play").addEventListener("click",()=>{if(!playing&&tNow>=S.dur)tNow=0;playing=!playing;$("play").textContent=playing?"Pause":"Play"});
+$("restart").addEventListener("click",()=>{tNow=0;playing=true;$("play").textContent="Pause";draw()});
+$("scrub").addEventListener("input",e=>{tNow=S.dur*e.target.value/1000;playing=false;$("play").textContent="Play";draw()});
+
+// ---------- Monte Carlo ----------
+function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function clearMC(){["mcRef","mcFlip","mcAds"].forEach(i=>$(i).textContent="–");$("mcRefCI").textContent="5th–95th: –";const c=$("hist");c.getContext("2d").clearRect(0,0,c.width,c.height)}
+$("runMC").addEventListener("click",()=>{const b=$("runMC");b.disabled=true;b.textContent="Running…";setTimeout(()=>{runMC();b.disabled=false;b.textContent="Run 10,000 uncertain replays"},30)});
+function runMC(){const r=rng(2026),U=(a,b)=>a+(b-a)*r(),N=()=>{let u=0,v=0;while(!u)u=r();v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+  const NO=200,NI=50,pc=[];let ads=0;
+  for(let o=0;o<NO;o++){const v0=P.v0/3.6*(1+0.1*(2*r()-1)),h=P.h*(1+0.25*(2*r()-1)),aL=P.aL*(1+0.2*(2*r()-1)),jL=U(5,20);
+    const m=P.m+0.10*N(),k=Math.max(P.k+0.122*N(),0),cv=Math.max(0.05,P.cv+0.15*(2*r()-1)),am=Math.max(1,P.amax+(2*r()-1)),jk=Math.max(1,P.jerk+10*(2*r()-1));
+    const rut=rampUp(v0,h,aL,jL);let n=0;for(let i=0;i<NI;i++){if(hits(v0,h,aL,jL,rtModel(rut,m,k,cv,N()),am,jk))n++}pc.push(n/NI);
+    if(hits(v0,h,aL,jL,Math.max(0.05,P.lat+0.25*(2*r()-1)),Math.max(1,P.aAds+(2*r()-1)),Math.max(1,P.jAds+10*(2*r()-1))))ads++}
+  const mean=pc.reduce((a,b)=>a+b,0)/NO,s=[...pc].sort((a,b)=>a-b),q=p=>s[Math.min(NO-1,Math.floor(p*NO))];
+  $("mcRef").textContent=mean.toFixed(2);$("mcRefCI").textContent=`5th–95th: ${q(0.05).toFixed(2)}–${q(0.95).toFixed(2)}`;
+  $("mcFlip").textContent=(S.meanHit?1-mean:mean).toFixed(2);$("mcAds").textContent=(ads/NO).toFixed(2);
+  const c=$("hist"),dpr=window.devicePixelRatio||1,w=c.clientWidth,hh=c.clientHeight;c.width=w*dpr;c.height=hh*dpr;const x=c.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);
+  const bins=new Array(20).fill(0);pc.forEach(p=>bins[Math.min(19,Math.floor(p*20))]++);const mx=Math.max(...bins),L=8,B=20;
+  bins.forEach((n,i)=>{const bw=(w-2*L)/20,bh=(hh-B-6)*n/mx;x.fillStyle=css("--ref");x.fillRect(L+i*bw+1,hh-B-bh,bw-2,bh)});
+  x.fillStyle=css("--muted");x.font="11px 'IBM Plex Mono', monospace";x.textAlign="center";[0,0.25,0.5,0.75,1].forEach(v=>{x.textAlign=v===0?"left":v===1?"right":"center";x.fillText(v.toFixed(2),L+(w-2*L)*v,hh-5)});
+  const xm=L+(w-2*L)*mean;x.strokeStyle=css("--ink");x.setLineDash([4,3]);x.beginPath();x.moveTo(xm,4);x.lineTo(xm,hh-B);x.stroke();x.setLineDash([])}
+
+addEventListener("resize",()=>{sizeRoad();drawCharts();draw()});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{drawCharts();draw()});
+sizeRoad();compute();drawCharts();draw();$("play").textContent=playing?"Pause":"Play";requestAnimationFrame(frame);
+window.__sim={rampUp,rtModel,traj,hits,injury,invN};
+})();
+</script>

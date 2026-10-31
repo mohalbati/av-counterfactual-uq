@@ -1,0 +1,94 @@
+{
+  "runtime_s": 85.5,
+  "quick": false,
+  "n_outer": 512,
+  "n_inner": 200,
+  "n_count": 4000,
+  "n_sobol_base": 8192,
+  "seed": 2026,
+  "rt_k_se_derived": 0.1224,
+  "deterministic_avoided": {
+    "nieon": 5,
+    "ads": 16
+  },
+  "count_nieon_avoided_p05_p50_p95": [
+    2,
+    7,
+    12
+  ],
+  "count_nieon_mean_driver_avoided_p05_p50_p95": [
+    0,
+    4,
+    12
+  ],
+  "p_ads_more_avoided_than_nieon": 0.99575,
+  "p_ads_more_avoided_than_nieon_mean_driver": 0.991,
+  "n_scenarios_mean_driver_flip_over_20pct": 9,
+  "count_ads_avoided_p05_p50_p95": [
+    13,
+    15,
+    16
+  ],
+  "p_nieon_count_equals_deterministic": 0.12075,
+  "n_scenarios_flip_prob_over_20pct": 14,
+  "most_uncertain_scenario": "S02",
+  "reference_percentile": [
+    {
+      "response_time_percentile": 10,
+      "nieon_avoided_of_16": 14,
+      "ads_avoided_of_16": 16
+    },
+    {
+      "response_time_percentile": 50,
+      "nieon_avoided_of_16": 5,
+      "ads_avoided_of_16": 16
+    },
+    {
+      "response_time_percentile": 90,
+      "nieon_avoided_of_16": 0,
+      "ads_avoided_of_16": 16
+    }
+  ],
+  "count_by_uncertainty_source": [
+    {
+      "variant": "reconstruction only",
+      "nieon_p05": 3,
+      "nieon_p50": 5,
+      "nieon_p95": 7,
+      "ads_p05": 14,
+      "ads_p50": 15,
+      "ads_p95": 16,
+      "p_nieon_equals_deterministic": 0.32525
+    },
+    {
+      "variant": "reconstruction only, half-width ranges",
+      "nieon_p05": 3,
+      "nieon_p50": 4,
+      "nieon_p95": 6,
+      "ads_p05": 14,
+      "ads_p50": 15,
+      "ads_p95": 16,
+      "p_nieon_equals_deterministic": 0.335
+    },
+    {
+      "variant": "NIEON/ADS model only",
+      "nieon_p05": 0,
+      "nieon_p50": 4,
+      "nieon_p95": 12,
+      "ads_p05": 13,
+      "ads_p50": 16,
+      "ads_p95": 16,
+      "p_nieon_equals_deterministic": 0.262
+    },
+    {
+      "variant": "both",
+      "nieon_p05": 0,
+      "nieon_p50": 5,
+      "nieon_p95": 12,
+      "ads_p05": 13,
+      "ads_p50": 15,
+      "ads_p95": 16,
+      "p_nieon_equals_deterministic": 0.09325
+    }
+  ]
+}

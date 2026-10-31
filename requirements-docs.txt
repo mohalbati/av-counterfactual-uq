@@ -1,0 +1,5 @@
+# Building the report (scripts/build_docs.py) and checking the browser simulator
+# also needs pandoc 3.x on the PATH, and Node.js for scripts/check_simulator.js
+python-docx>=1.1
+playwright>=1.40
+pillow>=10
