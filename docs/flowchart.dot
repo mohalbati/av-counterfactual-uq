@@ -1,0 +1,83 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=11, nodesep=0.25, ranksep=0.28, pad=0.2, compound=true];
+  node  [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=10, fillcolor="#FFFFFF", color="#5B6472", penwidth=1.2, margin="0.12,0.06"];
+  edge  [color="#5B6472", arrowsize=0.7, penwidth=1.1, fontname="DejaVu Sans", fontsize=9];
+
+  /* ---------------- inputs ---------------- */
+  subgraph cluster_in {
+    label=<<B>STEP 1 · INPUTS</B>>; style="rounded,filled"; fillcolor="#EEF3FB"; color="#2A78D6";
+    scen [label=<<B>16 synthetic scenarios S01–S16</B><BR/>Latin hypercube (seed 2026) over<BR/>v<SUB>0</SUB> 11–31 m/s · h 0.3–1.6 s · a<SUB>L</SUB> 5.5–9.5 m/s²<BR/><I>example S02: 26.8 m/s, 0.92 s, 6.55 m/s²</I>>];
+    epi [label=<<B>13 epistemic inputs θ</B> (Table 4)<BR/>reconstruction: v<SUB>0</SUB> ±10%, h ±25%, a<SUB>L</SUB> ±20%, j<SUB>L</SUB> U[5,20]<BR/>RT model: m~N(0.63, 0.10²), k~N(0.47, 0.122²)≥0, CV U[0.25,0.55]<BR/>braking: a<SUB>max</SUB> U[6.5,8.5], j U[10,30]<BR/>ADS: τ U[0.3,0.8], a<SUB>max</SUB> U[7,9], j U[20,40] · injury: R<SUB>50</SUB> U[1.3,1.8]>];
+    ale [label=<<B>1 aleatory input z ~ N(0,1)</B><BR/>driver-to-driver response-time scatter>, fillcolor="#FFF4EC", color="#EB6834"];
+  }
+
+  /* ---------------- sampling ---------------- */
+  subgraph cluster_samp {
+    label=<<B>STEP 2 · SAMPLING (epistemic)</B>>; style="rounded,filled"; fillcolor="#F4F6F8"; color="#5B6472";
+    qmc [label=<<B>Scrambled Sobol QMC</B> (seed 2026)<BR/>U ∈ [0,1]<SUP>512×13</SUP>  (N<SUB>O</SUB> = 512 points)>];
+    map [label=<<B>Map U → θ by inverse CDF</B><BR/>uniform: a + u(b − a) · relative: x<SUB>nom</SUB>(1 + w(2u − 1))<BR/>normal: μ + σΦ<SUP>−1</SUP>(u); k truncated at 0>];
+  }
+  scen -> qmc [lhead=cluster_samp]; epi -> qmc;
+  qmc -> map;
+
+  /* ---------------- nested loop ---------------- */
+  subgraph cluster_outer {
+    label=<<B>STEP 3 · OUTER LOOP</B>  i = 1 … 512 (one state of knowledge θ<SUB>i</SUB>)   ×  16 scenarios>; style="rounded,filled"; fillcolor="#EAF2FB"; color="#2A78D6"; penwidth=2;
+    rut [label=<<B>Looming and ramp-up time</B><BR/>(1) a<SUB>L</SUB>(t)=min(j<SUB>L</SUB>t, a<SUB>L</SUB>) · (4) θ=2 arctan(W/2D)<BR/>(5) θ̇ = W(v<SUB>S</SUB>−v<SUB>L</SUB>)/(D²+W²/4) · (6) RUT = first t with θ̇ ≥ 0.05 rad/s<BR/><I>S02: RUT = 1.79 s</I>>];
+    mean [label=<<B>Mean response time</B><BR/>(7) RT̄ = m + k·RUT<BR/><I>S02: 0.63 + 0.47×1.79 = 1.47 s</I>>];
+    ads [label=<<B>Generic ADS</B> (no aleatory part)<BR/>(13) RT = τ<SUB>ADS</SUB> → simulate once<BR/>C<SUB>ADS</SUB>(θ<SUB>i</SUB>) ∈ {0,1}>, fillcolor="#FFF4EC", color="#EB6834"];
+    md [label=<<B>“Mean driver” view</B><BR/>z = 0 (ε = 1): RT = RT̄ → C<SUB>mean</SUB>(θ<SUB>i</SUB>)>];
+
+    subgraph cluster_inner {
+      label=<<B>STEP 4 · INNER LOOP</B>  l = 1 … 200 (driver population)>; style="rounded,filled"; fillcolor="#FFF7EF"; color="#EB6834"; penwidth=2;
+      zdraw [label=<<B>Draw z<SUB>l</SUB> ~ N(0,1)</B> (pseudo-random, seed 2026)>, fillcolor="#FFFFFF"];
+      rt [label=<<B>Individual response time</B><BR/>(10) RT<SUB>il</SUB> = RT̄ · exp(s z<SUB>l</SUB> − s²/2), s² = ln(1 + CV²)<BR/><I>CV 0.4: 10th pct 0.84 s · 90th pct 2.24 s</I>>];
+      sim [label=<<B>Simulate the conflict</B> (Δt = 5 ms)<BR/>(2) dv/dt = −a · (3) x(t) = x<SUB>0</SUB> + ∫(v<SUB>L</SUB> − v<SUB>S</SUB>)dt, x<SUB>0</SUB> = h v<SUB>0</SUB><BR/>(11) a<SUB>S</SUB>(t) = min(max(j(t − RT), 0), a<SUB>max</SUB>)>];
+      out [label=<<B>Outcome</B><BR/>(14) C = 1[min x ≤ 0] · (15) v<SUB>c</SUB> = v<SUB>S</SUB> − v<SUB>L</SUB> at contact<BR/>(16) Δv = v<SUB>c</SUB>/2 · (17)–(18) P(MAIS3+) logistic, 10% at Δv 63 km/h>];
+    }
+    pc [label=<<B>Conditional collision probability</B><BR/>(19) P<SUB>c</SUB>(θ<SUB>i</SUB>) = (1/200) Σ<SUB>l</SUB> C(θ<SUB>i</SUB>, z<SUB>l</SUB>)>, fillcolor="#FFFFFF", penwidth=2, color="#2A78D6"];
+  }
+  map -> rut [lhead=cluster_outer];
+  rut -> mean;
+  mean -> zdraw [lhead=cluster_inner];
+  zdraw -> rt -> sim -> out;
+  out -> pc [ltail=cluster_inner, label="  average over l"];
+  mean -> md; map -> ads;
+  out -> zdraw [label=" next l", style=dashed, constraint=false];
+
+  /* ---------------- per-scenario results ---------------- */
+  subgraph cluster_res {
+    label=<<B>STEP 5 · PER-SCENARIO RESULTS</B>  (512 values of P<SUB>c</SUB> per scenario)>; style="rounded,filled"; fillcolor="#EEF8F1"; color="#1E7A4C";
+    summ [label=<<B>Epistemic distribution of P<SUB>c</SUB></B><BR/>(20) mean, 5th / 50th / 95th percentiles<BR/><I>S02: mean 0.57, 90% range 0.18–0.95</I>>];
+    flip [label=<<B>Flip probability</B><BR/>(21) p<SUB>flip</SUB> = E<SUB>θ</SUB>[1 − P<SUB>c</SUB>] if deterministic collision, else E<SUB>θ</SUB>[P<SUB>c</SUB>] <BR/><I>S02: 0.43</I>>];
+  }
+  pc -> summ [ltail=cluster_outer, label="  repeat for i = 1…512"];
+  summ -> flip;
+
+  /* ---------------- other analyses ---------------- */
+  subgraph cluster_other {
+    label=<<B>STEP 6 · ANALYSES ACROSS SCENARIOS</B>>; style="rounded,filled"; fillcolor="#F6F2FB"; color="#7A4FB0";
+    cnt [label=<<B>Scenario-set counts</B> (4,000 realizations ω)<BR/>model parameters <B>shared</B> across the 16 scenarios (Sobol, seed 2027)<BR/>reconstruction errors and z <B>independent</B> per scenario<BR/>(22) N<SUB>av</SUB>(ω) = Σ<SUB>s</SUB>(1 − C<SUB>s</SUB>) · (23) P(N<SUB>av</SUB><SUP>ADS</SUP> &gt; N<SUB>av</SUB><SUP>ref</SUP>)<BR/><I>result: 7 (2–12) avoided vs 5 deterministic</I>>];
+    src [label=<<B>Source decomposition</B> (mean driver, 4,000 each)<BR/>reconstruction only · half-width ranges · model only · both>];
+    pct [label=<<B>Reference-percentile drivers</B><BR/>z = Φ<SUP>−1</SUP>(0.10, 0.50, 0.90), all else nominal<BR/><I>avoided 14 / 5 / 0 of 16</I>>];
+  }
+  flip -> cnt [lhead=cluster_other];
+  cnt -> src -> pct [style=invis];
+  ale -> zdraw [lhead=cluster_inner, style=dashed, color="#EB6834", label=" z"];
+  ads -> summ [style=dashed, color="#EB6834", label=" ADS P(collision)"];
+  md -> summ [style=dashed, label=" mean-driver P(collision)"];
+
+  /* ---------------- Sobol ---------------- */
+  subgraph cluster_sobol {
+    label=<<B>STEP 7 · SOBOL SENSITIVITY</B>  (scenario with mean P<SUB>c</SUB> closest to 0.5: S02)>; style="rounded,filled"; fillcolor="#FDF3F3"; color="#B3261E";
+    ab [label=<<B>Base matrices A, B</B>: 8,192 × 10 each (scrambled Sobol, 20 columns split)<BR/>inputs: 4 reconstruction + 5 NIEON model + aleatory z (as Φ<SUP>−1</SUP>(u))>];
+    abi [label=<<B>A<SUB>B</SUB><SUP>(i)</SUP></B>: A with column(s) i taken from B<BR/>10 single inputs + 4 groups → 14 matrices<BR/>model runs: 8,192 × (2 + 14) = 131,072>];
+    est [label=<<B>Estimators</B><BR/>(26) S<SUB>i</SUB> = mean[f(B)(f(A<SUB>B</SUB><SUP>(i)</SUP>) − f(A))] / Var(Y)   (Saltelli 2010)<BR/>(27) S<SUB>Ti</SUB> = mean[(f(A) − f(A<SUB>B</SUB><SUP>(i)</SUP>))²] / (2 Var(Y))   (Jansen 1999)<BR/>95% CI: 200 bootstrap resamples of rows>];
+    sres [label=<<B>Result (collision)</B>: S<SUB>T</SUB> residual 0.78 · RT slope 0.31 · lead decel 0.27<BR/>groups: timing 0.36 · reconstruction 0.31 · braking 0.23>];
+  }
+  pct -> ab [lhead=cluster_sobol, ltail=cluster_other];
+  ab -> abi -> est -> sres;
+
+  check [label=<<B>STEP 8 · VERIFICATION</B><BR/>outer-loop convergence to 2,048 samples (mean ±0.003) · inner-loop SE ≤ 0.035<BR/>7 unit tests: Eq. (12) closed form, Eq. (18) anchor, SE(k), Ishigami test of the Sobol code>, fillcolor="#F4F6F8"];
+  sres -> check;
+}

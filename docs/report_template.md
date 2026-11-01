@@ -2,7 +2,7 @@
 title: "How Certain Is a Counterfactual Crash Simulation?"
 subtitle: "Uncertainty quantification for reference-model benchmarking of automated driving systems"
 author: "Mohammad Albati, Ph.D."
-date: "Technical report v1.2 · October 2026 · Code: github.com/mohalbati/av-counterfactual-uq · DOI: 10.5281/zenodo.23838254"
+date: "Technical report v1.3 · November 2026 (adds Appendix B: derivations, sampling and flowchart) · Code: github.com/mohalbati/av-counterfactual-uq · DOI: 10.5281/zenodo.23838254"
 ---
 
 # Abstract
@@ -1073,3 +1073,285 @@ The script's model part has been verified (dry-run output equal to Table 4a). Th
 | θ (vector), *N*~O~, *N*~I~ | Epistemic input vector; outer and inner sample sizes | – |
 | *P*~c~, *p*~flip~, *N*~av~ | Conditional collision probability, flip probability, count avoided | – |
 | *S*~i~, *S*~Ti~ | First-order and total Sobol indices | – |
+
+# Appendix B. Derivations, parameters and the uncertainty analysis in full
+
+This appendix collects, in one place, everything needed to check or reproduce the analysis by hand: a flowchart of every step, the derivation of every numbered equation with its source, meaning and value for the worked example (scenario S02), the complete parameter table with the way each input is sampled, and a full description of the sampling schemes and sample sizes.
+
+**Worked-example values.** Unless stated otherwise, numbers quoted as "S02" use that scenario's nominal inputs: *v*~0~ = 26.8 m/s (96 km/h), *h* = 0.92 s, *a*~L~ = 6.55 m/s², *j*~L~ = 12.5 m/s³, *m* = 0.63 s, *k* = 0.47, CV = 0.40, *a*~max~ = 7.5 m/s², *j* = 20 m/s³, *R*~50~ = 1.55. All values were recomputed with the repository code for this appendix.
+
+## B.1 Flowchart of the whole analysis
+
+![Figure B1. Flowchart, part 1: inputs, sampling and the two nested loops (Steps 1–5). Step 3 (blue) is the outer, epistemic loop over 512 states of knowledge; Step 4 (orange) is the inner, aleatory loop over 200 simulated drivers inside each outer sample. Numbers in parentheses are equation numbers; italic lines are scenario S02 values. Dashed arrows: the residual *z* enters only the inner loop, while the "mean driver" and the generic ADS are evaluated once per outer sample.](../results/figB1_uq_flowchart_part1.png){width=100%}
+
+![Figure B2. Flowchart, part 2: analyses across the 16 scenarios, Sobol sensitivity analysis and verification (Steps 6–8). A single-page version of the whole flowchart is in results/figB_uq_flowchart.png.](../results/figB2_uq_flowchart_part2.png){width=78%}
+
+**Reading the flowchart, step by step.**
+
+1. **Inputs.** Sixteen synthetic scenarios fix the nominal speed, headway and lead deceleration. Thirteen epistemic inputs describe what is not known exactly (reconstruction errors and model parameters). One aleatory input, *z*, describes how individual good drivers differ.
+2. **Sampling.** A scrambled Sobol sequence produces 512 points in the 13-dimensional unit cube. Each coordinate is converted to a physical value with the inverse cumulative distribution function of its distribution (Sections B.9 and B.10).
+3. **Outer loop (epistemic).** For each of the 512 points θ~i~ and each scenario, the ramp-up time and the mean response time are computed once. The generic ADS and the "mean driver" are also simulated once, because neither has an aleatory part.
+4. **Inner loop (aleatory).** Two hundred standard-normal values *z*~l~ give 200 individual response times. Each is simulated, and the collision indicator, closing speed and injury probability are recorded. Their average is the conditional collision probability *P*~c~(θ~i~).
+5. **Per-scenario results.** The 512 values of *P*~c~ form the epistemic distribution of the collision probability, summarized by its mean, its percentiles and the flip probability.
+6. **Across scenarios.** Separate sampling designs give the distribution of the number of conflicts avoided, the contribution of each source of uncertainty, and the effect of choosing a percentile driver.
+7. **Sensitivity.** Sobol indices rank the inputs for the most uncertain scenario.
+8. **Verification.** Convergence checks and unit tests confirm the numerics.
+
+## B.2 Kinematics: Equations (1) to (3)
+
+**Source.** Newtonian mechanics; scenario type S.1 ("lead vehicle brakes surprisingly") from Engström et al. (2024).
+
+**Equation (1), lead-vehicle deceleration.** Real brakes do not reach full force instantly. The simplest model with a finite build-up is a constant jerk *j*~L~ (rate of change of deceleration) until the target deceleration *a*~L~ is reached:
+
+$$a_L(t)=\min(j_L t,\;a_L), \qquad \tau_L = \frac{a_L}{j_L}$$
+
+where τ~L~ is the ramp duration. *S02:* τ~L~ = 6.55/12.5 = 0.52 s.
+
+**Equation (2), speed.** By definition of acceleration, d*v*/d*t* = −*a*. Integrating Eq. (1) gives the lead speed in closed form:
+
+$$v_L(t)=\begin{cases} v_0-\tfrac12 j_L t^2, & t\le\tau_L\\[2pt] v_0-\tfrac12 j_L\tau_L^2-a_L(t-\tau_L), & t>\tau_L\end{cases}$$
+
+with *v*~L~ held at zero once the car stops. *S02:* at *t* = 1.79 s, *v*~L~ = 26.8 − 0.5×12.5×0.52² − 6.55×(1.79 − 0.52) = 16.8 m/s.
+
+**Equation (3), gap.** The gap shrinks at the rate at which the follower is faster than the leader: d*x*/d*t* = *v*~L~ − *v*~S~. Integrating from the initial gap *x*~0~ = *h v*~0~ gives Eq. (3). *S02:* *x*~0~ = 0.92 × 26.8 = 24.7 m.
+
+**Numerical scheme.** With time step Δ*t* = 5 ms, speeds are advanced by explicit Euler and the gap by the trapezoidal rule (average of old and new speeds):
+
+$$v^{n+1}=\max\!\big(v^{n}-a(t^n)\,\Delta t,\;0\big),\qquad x^{n+1}=x^{n}+\tfrac{\Delta t}{2}\Big[(v_L^{n}+v_L^{n+1})-(v_S^{n}+v_S^{n+1})\Big]$$
+
+**Meaning.** These three equations are the "physics engine". Everything that follows only decides *when* the follower starts braking and *how hard*.
+
+## B.3 Perception: Equations (4) to (6)
+
+**Source.** Geometry of vision (Lee, 1976); ramp-up definition and threshold from Engström et al. (2024, Section 3.4).
+
+**Equation (4), visual angle.** A car of width *W* seen face-on at distance *D* subtends half-angle arctan(*W*/2*D*), so
+
+$$\theta = 2\arctan\!\left(\frac{W}{2D}\right),\qquad D=x+d_{eye}$$
+
+*S02 at t = 0:* *D* = 24.7 + 2.0 = 26.7 m, θ = 2 arctan(0.9/26.7) = 0.0675 rad (3.9°).
+
+**Equation (5), looming rate.** Differentiate Eq. (4) with the chain rule, using d(arctan *u*)/d*u* = 1/(1 + *u*²) and *u* = *W*/(2*D*):
+
+$$\dot\theta = 2\cdot\frac{1}{1+W^2/(4D^2)}\cdot\left(-\frac{W}{2D^2}\right)\dot D = \frac{-W\,\dot D}{D^2+W^2/4}$$
+
+Because *D* = *x* + *d*~eye~ and d*x*/d*t* = *v*~L~ − *v*~S~, we have *Ḋ* = −(*v*~S~ − *v*~L~), which gives Eq. (5):
+
+$$\dot\theta=\frac{W\,(v_S-v_L)}{D^2+W^2/4}$$
+
+The image grows (θ̇ > 0) only when the follower is closing in.
+
+**Equation (6), ramp-up time.** RUT is the first time after the lead car starts braking at which θ̇ reaches the threshold θ̇* = 0.05 rad/s, computed with the follower still at constant speed (because the ramp-up precedes the response in the data).
+
+*S02:* at *t* = 1.79 s the closing speed is 26.8 − 16.8 = 10.0 m/s, the gap is 16.9 m, so *D* = 18.9 m and θ̇ = 1.8 × 10.0/(18.9² + 0.81) = 0.050 rad/s. Hence **RUT = 1.79 s**.
+
+**Meaning.** RUT measures how quickly the danger becomes visible. A hard stop at short range gives a short RUT, and drivers respond faster to it.
+
+## B.4 Response time: Equations (7) to (10)
+
+**Equation (7), mean response time.** *Source:* the published regression of Engström et al. (2024, Eq. 2), fitted to *n* = 36 SHRP2 events:
+
+$$\overline{\mathrm{RT}} = m + k\cdot\mathrm{RUT},\qquad m = 0.63\ \mathrm{s},\ k = 0.47$$
+
+*S02:* 0.63 + 0.47 × 1.79 = **1.47 s**. *Meaning:* the average attentive driver responds 1.47 s after the lead car starts braking.
+
+**Equation (8), standard error of the slope (derived).** The paper gives *r* = 0.55 and *n* = 36 but no standard errors. In simple linear regression the *t*-statistic of the slope can be written in two equivalent ways:
+
+$$t=\frac{\hat k}{SE(\hat k)} \qquad\text{and}\qquad t=\frac{r\sqrt{n-2}}{\sqrt{1-r^2}}$$
+
+(the second follows because *r*² is the share of variance explained and *t*² = (*n* − 2) *r*²/(1 − *r*²) is the regression *F*-statistic). Equating the two and solving for the standard error:
+
+$$SE(k)=k\,\frac{\sqrt{1-r^2}}{r\sqrt{n-2}}=0.47\times\frac{\sqrt{0.6975}}{0.55\sqrt{34}}=0.122$$
+
+*Check:* *t* = 0.47/0.122 = 3.84 with 34 degrees of freedom gives a two-sided *p* = 0.0005, consistent with the reported *p* < 0.001.
+
+**Equation (9), residual standard deviation (derived).** In least squares, total variance = explained + residual, and the explained share is *r*². So the residual variance is (1 − *r*²) Var(RT), and
+
+$$\sigma_\varepsilon=\sqrt{1-r^2}\;SD(\mathrm{RT})=\sqrt{1-0.3025}\;SD(\mathrm{RT})=0.835\,SD(\mathrm{RT})$$
+
+*Meaning:* the line explains only 30% of the variation between drivers; 70% is driver-to-driver scatter.
+
+**Equation (10), individual response time (assumed form).** The scatter is modeled as a multiplicative lognormal factor ε with mean one:
+
+$$\mathrm{RT}_i=\overline{\mathrm{RT}}\,\varepsilon_i,\qquad \varepsilon_i=\exp\!\left(s z_i-\tfrac{s^2}{2}\right),\qquad z_i\sim\mathcal N(0,1)$$
+
+*Why the mean is one.* For *Y* = exp(*sZ*) with *Z* standard normal, E[*Y*] = exp(*s*²/2). Multiplying by exp(−*s*²/2) therefore gives E[ε] = 1, so the regression line remains the population mean.
+
+*Why s² = ln(1 + CV²).* For a lognormal variable, Var/Mean² = exp(*s*²) − 1. Setting this equal to CV² and solving gives *s*² = ln(1 + CV²).
+
+*Percentiles.* Because ε is monotone in *z*, the *q*-th percentile driver has
+
+$$\mathrm{RT}_{(q)}=\overline{\mathrm{RT}}\,\exp\!\left(s\,\Phi^{-1}(q)-\tfrac{s^2}{2}\right)$$
+
+*S02 with CV = 0.40:* *s* = √ln(1.16) = 0.385; median 1.37 s; 10th percentile 1.47 × exp(0.385 × (−1.2816) − 0.074) = **0.84 s**; 90th percentile **2.24 s**.
+
+*Meaning:* the lognormal keeps response times positive, skews them to the right (a few slow drivers) and makes the scatter proportional to the mean, matching the three features reported by Engström et al. (2024).
+
+## B.5 Braking and the ADS: Equations (11) to (13)
+
+**Equation (11), responder braking.** The same constant-jerk form as Eq. (1), starting at the response time:
+
+$$a_S(t)=\min\!\big(\max(j\,(t-\mathrm{RT}),0),\;a_{max}\big)$$
+
+**Equation (12), stopping distance (derived, used for testing).** Split the motion into three phases and add the distances.
+
+1. *Reaction*, 0 ≤ *t* < RT: constant speed, distance *v*~0~ RT.
+2. *Build-up*, duration τ~j~ = *a*~max~/*j*: deceleration *j t′*, so speed *v*~0~ − *j t′*²/2 and distance ∫~0~^τ~j~^ (*v*~0~ − *j t′*²/2) d*t′* = *v*~0~τ~j~ − *j*τ~j~³/6. Speed at the end: *v*~1~ = *v*~0~ − *j*τ~j~²/2.
+3. *Full braking*: constant deceleration from *v*~1~ to 0, distance *v*~1~²/(2*a*~max~).
+
+Summing gives Eq. (12):
+
+$$d_{stop}=v_0\mathrm{RT}+v_0\tau_j-\frac{j\tau_j^3}{6}+\frac{v_1^2}{2a_{max}}$$
+
+*S02 values:* τ~j~ = 7.5/20 = 0.375 s, *v*~1~ = 25.39 m/s, and *d*~stop~ = 39.5 + 10.1 − 0.2 + 43.0 = **92.4 m** to stop from 96 km/h with a 1.47 s response. The test suite checks the integrator against this formula within ±0.5 m.
+
+**Equation (13), generic ADS (assumed).** The ADS responds a fixed latency τ~ADS~ after the lead car starts braking and then brakes by Eq. (11) with its own *a*~max~ and *j*. It has no aleatory part. *S02 nominal:* τ = 0.55 s, stopping 21.4 m short of the lead car.
+
+## B.6 Outcome and injury: Equations (14) to (18)
+
+**Equations (14) and (15), contact.** A collision occurs if the gap reaches zero. Within the step in which the sign changes, the contact time is found by linear interpolation:
+
+$$f=\frac{x^{n}}{x^{n}-x^{n+1}},\qquad t_c=t^n+f\,\Delta t,\qquad v_c=\big[v_S^n+f(v_S^{n+1}-v_S^n)\big]-\big[v_L^n+f(v_L^{n+1}-v_L^n)\big]$$
+
+*S02 (mean driver):* contact at 3.91 s, closing speed 7.03 m/s = **25.3 km/h**.
+
+**Equation (16), delta-v.** *Source:* conservation of momentum, as in TARGET (Campolettano et al., 2025). In a perfectly plastic (no-rebound) collinear impact the two cars leave with a common speed *v*′:
+
+$$m_S v_S+m_L v_L=(m_S+m_L)\,v' \;\Rightarrow\; \Delta v_L=v'-v_L=\frac{m_S}{m_S+m_L}(v_S-v_L)=\frac{m_S}{m_S+m_L}v_c$$
+
+With equal masses, Δ*v* = *v*~c~/2. *S02:* 25.3/2 = **12.6 km/h**.
+
+**Equations (17) and (18), injury risk.** *Source:* logistic form as used in TARGET; anchor point from TARGET (10% MAIS3+ at a 126 km/h rear-end closing speed, so Δ*v*~10~ = 63 km/h); slope ratio *R*~50~ assumed.
+
+The logit of the risk is linear in Δ*v*: ln[*P*/(1 − *P*)] = *b*~0~ + *b*~1~Δ*v*. Impose two points:
+
+- *P* = 0.10 at Δ*v*~10~: logit(0.10) = ln(1/9) = −ln 9.
+- *P* = 0.50 at *R*~50~Δ*v*~10~: logit(0.50) = 0.
+
+Subtracting the two conditions gives *b*~1~(*R*~50~ − 1)Δ*v*~10~ = ln 9, and the second gives *b*~0~ = −*b*~1~*R*~50~Δ*v*~10~:
+
+$$b_1=\frac{\ln 9}{(R_{50}-1)\,\Delta v_{10}},\qquad b_0=-b_1R_{50}\Delta v_{10}$$
+
+*Nominal R~50~ = 1.55:* *b*~1~ = 2.197/(0.55 × 63) = 0.0634 per km/h, *b*~0~ = −6.19. *S02:* *P*(MAIS3+) = 1/(1 + exp(6.19 − 0.0634 × 12.6)) = **0.45%**. By construction *P* = 10% at 63 km/h for every *R*~50~.
+
+## B.7 Uncertainty propagation: Equations (19) to (23)
+
+**Equation (19), conditional collision probability.** For a fixed state of knowledge θ, the collision indicator *C*(θ, *z*) depends only on the driver residual *z*. Its expectation over the driver population is estimated by the sample mean of *N*~I~ = 200 independent draws:
+
+$$P_c(\theta_i)=\mathbb E_z[C(\theta_i,z)]\approx\frac{1}{N_I}\sum_{l=1}^{N_I}C(\theta_i,z_l)$$
+
+Because each *C* is 0 or 1, the estimate is a binomial proportion with standard error √(*P*~c~(1 − *P*~c~)/*N*~I~) ≤ √(0.25/200) = **0.035**.
+
+**Equation (20), epistemic summaries.** The 512 values *P*~c~(θ~i~) are a sample from the epistemic distribution of the collision probability. Their mean estimates E~θ~[*P*~c~] (which equals the total probability of collision), and their empirical quantiles give the percentiles. *S02:* mean **0.57**, 5th–95th percentiles **0.18–0.95**.
+
+**Equation (21), flip probability.** If the deterministic verdict was "collision", the probability that it is wrong is the probability of no collision, averaged over everything uncertain: E~θ~[1 − *P*~c~]; otherwise it is E~θ~[*P*~c~]. *S02:* 1 − 0.57 = **0.43**.
+
+**Equations (22) and (23), scenario-set counts.** For one joint realization ω of all uncertainties, the number of conflicts avoided is a sum of 16 indicators, and the probability that the ADS beats the reference is the share of realizations in which its count is larger. *Result:* reference driver 7 avoided (90% interval 2–12) against 5 in the deterministic analysis; P(ADS > reference) = 99.6%.
+
+## B.8 Sensitivity analysis: Equations (24) to (27)
+
+**Variance decomposition.** For independent inputs, the law of total variance applied to one input *X*~i~ gives
+
+$$\mathrm{Var}(Y)=\underbrace{\mathrm{Var}_{X_i}\big(\mathbb E[Y\mid X_i]\big)}_{\text{explained by }X_i\text{ alone}}+\underbrace{\mathbb E_{X_i}\big[\mathrm{Var}(Y\mid X_i)\big]}_{\text{remaining}}$$
+
+Dividing the first term by Var(*Y*) defines the **first-order index** *S*~i~ (Eq. 24): the fraction of variance that would disappear if *X*~i~ were known exactly. Applying the same identity to all inputs *except* *X*~i~ (written *X*~∼i~), the expected remaining variance E[Var(*Y* | *X*~∼i~)] is everything that involves *X*~i~, alone or in combination; divided by Var(*Y*) it is the **total index** *S*~Ti~ (Eq. 25). The gap *S*~Ti~ − *S*~i~ is the share due to interactions.
+
+**Equation (26), first-order estimator (Saltelli et al., 2010).** Let **A** and **B** be independent sample matrices and **A**~B~^(i)^ be **A** with column *i* taken from **B**. Then *f*(**B**) and *f*(**A**~B~^(i)^) share only *X*~i~, so
+
+$$\mathbb E\big[f(\mathbf B)\,f(\mathbf A_B^{(i)})\big]-\mathbb E\big[f(\mathbf B)\,f(\mathbf A)\big]=\mathbb E\big[\mathbb E[Y\mid X_i]^2\big]-\mathbb E[Y]^2=\mathrm{Var}\big(\mathbb E[Y\mid X_i]\big)$$
+
+Replacing expectations by row averages gives Eq. (26).
+
+**Equation (27), total-effect estimator (Jansen, 1999).** *f*(**A**) and *f*(**A**~B~^(i)^) differ only in *X*~i~. For two independent draws of *X*~i~ with the other inputs fixed, E[(*Y* − *Y′*)²]/2 is the conditional variance of *Y* given *X*~∼i~. Averaging over *X*~∼i~:
+
+$$\tfrac12\,\mathbb E\Big[\big(f(\mathbf A)-f(\mathbf A_B^{(i)})\big)^2\Big]=\mathbb E\big[\mathrm{Var}(Y\mid X_{\sim i})\big]$$
+
+which gives Eq. (27). **Groups** are handled by swapping all of a group's columns at once. **Confidence intervals** come from recomputing both estimators on 200 bootstrap resamples of the 8,192 rows.
+
+*S02 results (collision outcome):* total indices 0.78 for the driver residual, 0.31 for the response-time slope *k*, 0.27 for the lead deceleration; group totals 0.36 (timing model), 0.31 (reconstruction), 0.23 (braking). All first-order indices are much smaller than the totals, so most of the variance comes from interactions: for example, a slow driver matters only when the lead car also brakes hard at a short gap.
+
+## B.9 Complete parameter table and how each input is sampled
+
+: Table B1. Every input, its nominal value, its distribution, the transformation from the Sobol coordinate *u* ∈ [0, 1], and its source. Column = position in the 13-dimensional outer sample.
+
+| Col. | Input | Nominal | Distribution | Transformation from *u* | Type | Source |
+|---|---|---|---|---|---|---|
+| 1 | Initial speed *v*~0~ | scenario | ±10% uniform | *v*~0,nom~(1 + 0.10(2*u* − 1)) | Epistemic | Assumed (A3) |
+| 2 | Headway *h* | scenario | ±25% uniform | *h*~nom~(1 + 0.25(2*u* − 1)) | Epistemic | Assumed (A3) |
+| 3 | Lead deceleration *a*~L~ | scenario | ±20% uniform | *a*~L,nom~(1 + 0.20(2*u* − 1)) | Epistemic | Assumed (A3) |
+| 4 | Lead jerk *j*~L~ | 12.5 m/s³ | U[5, 20] | 5 + 15*u* | Epistemic | Assumed (A4) |
+| 5 | RT intercept *m* | 0.63 s | N(0.63, 0.10²) | 0.63 + 0.10 Φ^−1^(*u*) | Epistemic | Data; SE assumed (A6) |
+| 6 | RT slope *k* | 0.47 | N(0.47, 0.122²), ≥ 0 | max(0, 0.47 + 0.122 Φ^−1^(*u*)) | Epistemic | Data; SE derived (Eq. 8) |
+| 7 | Residual CV | 0.40 | U[0.25, 0.55] | 0.25 + 0.30*u* | Epistemic | Derived/assumed (A7) |
+| 8 | NIEON *a*~max~ | 7.5 m/s² | U[6.5, 8.5] | 6.5 + 2*u* | Epistemic | Assumed (A8) |
+| 9 | NIEON jerk *j* | 20 m/s³ | U[10, 30] | 10 + 20*u* | Epistemic | Assumed (A8) |
+| 10 | ADS latency τ | 0.55 s | U[0.3, 0.8] | 0.3 + 0.5*u* | Epistemic | Assumed (A10) |
+| 11 | ADS *a*~max~ | 8 m/s² | U[7, 9] | 7 + 2*u* | Epistemic | Assumed (A10) |
+| 12 | ADS jerk | 30 m/s³ | U[20, 40] | 20 + 20*u* | Epistemic | Assumed (A10) |
+| 13 | Injury slope ratio *R*~50~ | 1.55 | U[1.3, 1.8] | 1.3 + 0.5*u* | Epistemic | Assumed (A11) |
+| – | Driver residual *z* | 0 | N(0, 1) | pseudo-random normal (inner loop); Φ^−1^(*u*) in the Sobol analysis | Aleatory | Data-based scatter |
+| – | Looming threshold θ̇* | 0.05 rad/s | fixed | – | – | Data (Engström et al., 2024) |
+| – | Lead width *W*, eye offset *d*~eye~ | 1.8 m, 2.0 m | fixed | – | – | Assumed (A5) |
+| – | 10%-risk delta-v Δ*v*~10~ | 63 km/h | fixed | – | – | Data (TARGET) + Eq. (16) |
+| – | Time step Δ*t*, horizon | 5 ms, 12 s | fixed | – | Numerical | Convergence-checked |
+
+Φ^−1^ is the standard-normal quantile function. Normal inputs are clipped to *u* ∈ [10^−6^, 1 − 10^−6^] before the transformation so that the quantile stays finite. The **nominal** ("deterministic") case sets every input to the value in the third column and *z* = 0, which reproduces the single-replay practice.
+
+## B.10 Sampling schemes and sample sizes
+
+**Scenarios.** The 16 scenarios are a Latin hypercube sample (seed 2026) over *v*~0~ ∈ [11, 31] m/s, *h* ∈ [0.3, 1.6] s and *a*~L~ ∈ [5.5, 9.5] m/s². A Latin hypercube places exactly one point in each of 16 equal slices of every input, so a small set covers each range evenly.
+
+**Outer loop: scrambled Sobol quasi-Monte Carlo.** Sobol points fill the unit cube more evenly than pseudo-random points, so means and percentiles converge faster (error close to 1/*N* rather than 1/√*N* for smooth integrands). Scrambling (a seeded random permutation of the digits, as implemented in SciPy) removes the regular lattice structure and allows the same seed to reproduce the run exactly. *N*~O~ = 512 = 2^9^ is a power of two, which preserves the balance properties of the sequence. The same 512 points are reused for every scenario (common random numbers), so differences between scenarios are not blurred by sampling noise.
+
+**Inner loop: pseudo-random normals.** For each outer point, 200 independent standard-normal values *z* are drawn (NumPy generator, seed 2026). Pseudo-random sampling is used here because the inner average estimates a probability of a 0/1 outcome, where quasi-random points give little advantage.
+
+**Scenario-set counts.** Each of 4,000 realizations ω uses one Sobol point (seed 2027) for the model parameters (columns 5–13), **shared by all 16 scenarios**: one state of knowledge about the reference driver and the ADS applies to every crash. The reconstruction errors (columns 1–4) and the driver residual are drawn **independently for each scenario**, because each crash is reconstructed separately and involves a different driver. Treating the model parameters as independent across scenarios would make the count interval misleadingly narrow (assumption A14).
+
+**Source decomposition.** The same 4,000-realization design is repeated with the mean driver (*z* = 0) and with groups of inputs fixed at nominal: (1) only reconstruction uncertain; (2) the same with half-width ranges; (3) only model parameters uncertain; (4) both.
+
+**Reference-percentile drivers.** Three deterministic runs per scenario with *z* = Φ^−1^(0.10), Φ^−1^(0.50) and Φ^−1^(0.90) and all other inputs nominal.
+
+**Sobol sensitivity design.** One 20-dimensional scrambled Sobol sample of 8,192 points (seed 2026) is split into two independent 10-column matrices **A** and **B**. The 10 inputs are the 9 NIEON-relevant epistemic inputs plus the residual *z*, entered as Φ^−1^(*u*) so that it can be compared with the epistemic inputs. The ADS and injury inputs are held at nominal (*u* = 0.5) because they do not affect the reference driver's collision. Fourteen **A**~B~^(i)^ matrices are formed (10 single inputs and 4 groups). Outputs: collision indicator and closing speed (0 when avoided).
+
+: Table B2. Sample sizes and the number of conflict simulations in the full run.
+
+| Analysis | Design | Simulations |
+|---|---|---|
+| Deterministic verdicts | 16 scenarios × 2 responders | 32 |
+| Two-loop Monte Carlo (reference driver) | 16 × 512 outer × 200 inner | 1,638,400 |
+| Mean-driver and ADS views | 16 × 512 × 2 | 16,384 |
+| Scenario-set counts | 4,000 × 16 × 3 views | 192,000 |
+| Source decomposition | 4 variants × 4,000 × 16 × 2 | 512,000 |
+| Reference percentiles | 3 × 16 | 48 |
+| Sobol indices | 8,192 × (2 + 14) | 131,072 |
+| **Total** | | **about 2.49 million** |
+| Convergence study (separate script) | S02, up to 2,048 outer × 200 inner | about 0.4 million |
+
+**Convergence.** For S02, the mean collision probability is 0.573 with 512 outer samples and 0.573 with 2,048; beyond about 200 samples the mean moves by less than 0.003 and the 5th and 95th percentiles by less than about ±0.015 (Figure 8). The inner-loop standard error is at most 0.035 per outer sample, and it averages out across the 512 outer samples in the mean.
+
+**Reproducibility.** All random and quasi-random streams are seeded (2026, and 2027 for the count design), so `python scripts/run_analysis.py` reproduces every number in this report exactly (about 2 minutes on a laptop; `--quick` runs small samples in about 10 seconds).
+
+## B.11 Summary: every equation, its source and its S02 value
+
+: Table B3. Equations, sources and values for scenario S02 (nominal inputs unless stated).
+
+| Eq. | Quantity | Source | S02 value |
+|---|---|---|---|
+| (1) | Lead deceleration ramp | Physics | ramp 0.52 s to 6.55 m/s² |
+| (2)–(3) | Speeds and gap | Physics | *x*~0~ = 24.7 m |
+| (4) | Visual angle | Geometry (Lee, 1976) | 0.0675 rad at *t* = 0 |
+| (5) | Looming rate | Derivative of (4) | 0.050 rad/s at 1.79 s |
+| (6) | Ramp-up time | Engström et al. (2024) | 1.79 s |
+| (7) | Mean response time | Engström et al. (2024) | 1.47 s |
+| (8) | SE of slope | Derived | 0.122 (t = 3.84, p = 0.0005) |
+| (9) | Residual SD | Regression identity | 0.835 × SD(RT) |
+| (10) | Individual response time | Assumed lognormal | 0.84 s (10th), 1.37 s (median), 2.24 s (90th) |
+| (11)–(12) | Braking; stopping distance | Physics; derived | 92.4 m from 96 km/h |
+| (13) | ADS response | Assumed | 0.55 s; stops 21.4 m short |
+| (14)–(15) | Contact; closing speed | Definition | 3.91 s; 25.3 km/h |
+| (16) | Delta-v | Momentum conservation | 12.6 km/h |
+| (17)–(18) | Injury risk | TARGET anchor + assumed slope | *b*~1~ = 0.0634, *b*~0~ = −6.19; 0.45% |
+| (19)–(20) | Collision probability | Nested Monte Carlo | mean 0.57; 90% range 0.18–0.95 |
+| (21) | Flip probability | Definition | 0.43 |
+| (22)–(23) | Counts avoided; P(ADS > ref) | Definition | 7 (2–12) vs 5; 99.6% |
+| (24)–(27) | Sobol indices | Sobol (2001); Saltelli (2010); Jansen (1999) | S~T~: residual 0.78, slope 0.31 |

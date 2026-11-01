@@ -1,0 +1,30 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=11, nodesep=0.25, ranksep=0.28, pad=0.2, compound=true];
+  node  [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=10, fillcolor="#FFFFFF", color="#5B6472", penwidth=1.2, margin="0.12,0.06"];
+  edge  [color="#5B6472", arrowsize=0.7, penwidth=1.1, fontname="DejaVu Sans", fontsize=9];
+
+    prev [label=<<B>from Figure B1</B><BR/>per-scenario results of Steps 1–5 (512 outer × 200 inner samples per scenario)>, shape=note, fillcolor="#F4F6F8"];
+
+  subgraph cluster_other {
+    label=<<B>STEP 6 · ANALYSES ACROSS SCENARIOS</B>>; style="rounded,filled"; fillcolor="#F6F2FB"; color="#7A4FB0";
+    cnt [label=<<B>Scenario-set counts</B> (4,000 realizations ω)<BR/>model parameters <B>shared</B> across the 16 scenarios (Sobol, seed 2027)<BR/>reconstruction errors and z <B>independent</B> per scenario<BR/>(22) N<SUB>av</SUB>(ω) = Σ<SUB>s</SUB>(1 − C<SUB>s</SUB>) · (23) P(N<SUB>av</SUB><SUP>ADS</SUP> &gt; N<SUB>av</SUB><SUP>ref</SUP>)<BR/><I>result: 7 (2–12) avoided vs 5 deterministic</I>>];
+    src [label=<<B>Source decomposition</B> (mean driver, 4,000 each)<BR/>reconstruction only · half-width ranges · model only · both>];
+    pct [label=<<B>Reference-percentile drivers</B><BR/>z = Φ<SUP>−1</SUP>(0.10, 0.50, 0.90), all else nominal<BR/><I>avoided 14 / 5 / 0 of 16</I>>];
+  }
+  prev -> cnt [lhead=cluster_other];
+  cnt -> src -> pct [style=invis];
+
+  /* ---------------- Sobol ---------------- */
+  subgraph cluster_sobol {
+    label=<<B>STEP 7 · SOBOL SENSITIVITY</B>  (scenario with mean P<SUB>c</SUB> closest to 0.5: S02)>; style="rounded,filled"; fillcolor="#FDF3F3"; color="#B3261E";
+    ab [label=<<B>Base matrices A, B</B>: 8,192 × 10 each (scrambled Sobol, 20 columns split)<BR/>inputs: 4 reconstruction + 5 NIEON model + aleatory z (as Φ<SUP>−1</SUP>(u))>];
+    abi [label=<<B>A<SUB>B</SUB><SUP>(i)</SUP></B>: A with column(s) i taken from B<BR/>10 single inputs + 4 groups → 14 matrices<BR/>model runs: 8,192 × (2 + 14) = 131,072>];
+    est [label=<<B>Estimators</B><BR/>(26) S<SUB>i</SUB> = mean[f(B)(f(A<SUB>B</SUB><SUP>(i)</SUP>) − f(A))] / Var(Y)   (Saltelli 2010)<BR/>(27) S<SUB>Ti</SUB> = mean[(f(A) − f(A<SUB>B</SUB><SUP>(i)</SUP>))²] / (2 Var(Y))   (Jansen 1999)<BR/>95% CI: 200 bootstrap resamples of rows>];
+    sres [label=<<B>Result (collision)</B>: S<SUB>T</SUB> residual 0.78 · RT slope 0.31 · lead decel 0.27<BR/>groups: timing 0.36 · reconstruction 0.31 · braking 0.23>];
+  }
+  pct -> ab [lhead=cluster_sobol, ltail=cluster_other];
+  ab -> abi -> est -> sres;
+
+  check [label=<<B>STEP 8 · VERIFICATION</B><BR/>outer-loop convergence to 2,048 samples (mean ±0.003) · inner-loop SE ≤ 0.035<BR/>7 unit tests: Eq. (12) closed form, Eq. (18) anchor, SE(k), Ishigami test of the Sobol code>, fillcolor="#F4F6F8"];
+  sres -> check;
+}
